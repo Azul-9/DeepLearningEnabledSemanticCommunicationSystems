@@ -1,5 +1,5 @@
 """
-it includes some basic model and function of deepSC
+it includes some basic model and function of deepSC, but has been modified for mutual info joint training
 """
 
 
@@ -27,25 +27,6 @@ def AWGN_channel(x, snr):  # used to simulate additive white gaussian noise chan
     n_power = x_power / (10 ** (snr / 10.0))
     noise = torch.rand(batch_size, length, len_feature, device=device) *n_power
     return x + noise
-
-def multipath_model_generate(num_sample):
-    P_hdB = np.array([0, -8, -17, -21, -25])  # Power characteristics of each channels(dB)
-    D_h = [0, 3, 5, 6, 8]  # Each channel delay(sampling point)
-    P_h = 10 ** (P_hdB / 10)  # Power characteristics of each channels(dB)
-    NH = len(P_hdB)  # Number of the multi channels
-    LH = D_h[-1] + 1  # Length of the channels
-    P_h = np.reshape(P_h, (len(D_h), 1))
-    a = np.tile(np.sqrt(P_h / 2), num_sample)
-    A_h_I = np.random.randn(NH, num_sample) * a
-    A_h_Q = np.random.randn(NH, num_sample) * a
-    h_I = np.zeros((num_sample, LH))
-    h_Q = np.zeros((num_sample, LH))
-    i = 0
-    for index in D_h:
-        h_I[:, index] = A_h_I[i, :]
-        h_Q[:, index] = A_h_Q[i, :]
-        i += 1
-    return h_I, h_Q
 
 class SemanticCommunicationSystem(nn.Module):  # pure DeepSC
     def __init__(self):
@@ -76,7 +57,7 @@ class SemanticCommunicationSystem(nn.Module):  # pure DeepSC
         codeReceived = self.decoder(codeReceived)
         infoPredicted = self.prediction(codeReceived)
         infoPredicted = self.softmax(infoPredicted)
-        return infoPredicted
+        return infoPredicted, codeSent, codeWithNoise
 
 
 class MutualInfoSystem(nn.Module):  # mutual information used to maximize channel capacity
@@ -98,42 +79,18 @@ class MutualInfoSystem(nn.Module):  # mutual information used to maximize channe
         output = F.relu(self.fc3(output))
         return output
 
-def sample_batch(batch_size, sample_mode):  # used to sample data for mutual info system
-    if sample_mode == "joint":  # joint sample
-        index = np.random.choice(range(12799), size=batch_size, replace=False)  # replace = false means it won't select same number
-        num = 0
-        for i in index:
-            x = np.load("mutual data/x1/" + str(i) + ".npy")
-            y = np.load("mutual data/y1/" + str(i) + ".npy")
-            data_x = x.reshape(-1, 16)  # -1 means python will infer the dimension automatically
-            data_y = y.reshape(-1, 16)
-            if num == 0:
-                batch_x = data_x
-                batch_y = data_y
-            else:
-                batch_x = np.concatenate([batch_x, data_x], axis=0)
-                batch_y = np.concatenate([batch_y, data_y], axis=0)
-            num += 1
-    elif sample_mode == 'marginal':  # marginal sample
-        joint_index = np.random.choice(range(12799), size=batch_size, replace=False)
-        marginal_index = np.random.choice(range(12799), size=batch_size, replace=False)
-        num = 0
-        for i in range(batch_size):
-            j_index = joint_index[i]
-            m_index = marginal_index[i]
-            x = np.load("mutual data/x1/" + str(j_index) + ".npy")
-            y = np.load("mutual data/y1/" + str(m_index) + ".npy")
-            data_x = x.reshape(-1, 16)
-            data_y = y.reshape(-1, 16)
-            if num == 0:
-                batch_x = data_x
-                batch_y = data_y
-            else:
-                batch_x = np.concatenate([batch_x, data_x], axis=0)
-                batch_y = np.concatenate([batch_y, data_y], axis=0)
-            num += 1
-    batch = np.concatenate([batch_x, batch_y], axis=1)  # axis = 1 means that data will concat at the dim of row
-    # and if axis = 0, which means that data will concat one by one
+def sample_batch(batch_size, sample_mode, x, y):  # used to sample data for mutual info system
+    length = x.shape[0]
+    if sample_mode == 'joint':
+        index = np.random.choice(range(length), size=batch_size, replace=False)
+        batch_x = x[index, :]
+        batch_y = y[index, :]
+    elif sample_mode == 'marginal':
+        joint_index = np.random.choice(range(length), size=batch_size, replace=False)
+        marginal_index = np.random.choice(range(length), size=batch_size, replace=False)
+        batch_x = x[joint_index, :]
+        batch_y = y[marginal_index, :]
+    batch = torch.cat((batch_x, batch_y), 1)
 
     return batch
 

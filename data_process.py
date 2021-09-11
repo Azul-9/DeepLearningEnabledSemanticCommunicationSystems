@@ -1,9 +1,11 @@
-import pickle
+"""
+it's used to create a class which is the subclass of Dataset, it serves as the argument of dataloader
+"""
 
+import pickle
 import numpy
 from nltk import word_tokenize
 from torch.utils.data import Dataset
-
 
 
 class CorpusData(Dataset):
