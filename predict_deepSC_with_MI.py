@@ -1,9 +1,9 @@
 """
-it's used to validate model trained from train.py
+it's used to validate model trained from train.py, whose model is trained within mutual info model
 """
 import torch
-import model
-from model import calBLEU
+import modelModifiedForMI
+from modelModifiedForMI import calBLEU
 from nltk.tokenize import word_tokenize
 from transformers import BertTokenizer, BertModel
 from matplotlib import pyplot as plt
@@ -13,10 +13,10 @@ import pickle
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Using " + str(device).upper())
-model_path = './trainedModel/deepSC_without_MI.pth'
+model_path = './trainedModel/deepSC_with_MI.pth'
 
 
-net = model.SemanticCommunicationSystem()
+net = modelModifiedForMI.SemanticCommunicationSystem()
 net.load_state_dict(torch.load(model_path, map_location = device))
 net.to(device)
 tokenizer = BertTokenizer.from_pretrained('bertModel')
@@ -114,7 +114,7 @@ y1 = snr_BLEU_1_gram
 y2 = snr_BLEU_2_gram
 y3 = snr_BLEU_3_gram
 y4 = snr_BLEU_4_gram
-plt.title("deepSC without MI")
+plt.title("deepSC with MI")
 plt.xlabel("SNR")
 plt.ylabel("BLEU")
 plt.plot(x, y1, marker='D', label='1-gram')

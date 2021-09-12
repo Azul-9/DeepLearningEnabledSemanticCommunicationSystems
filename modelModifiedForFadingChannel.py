@@ -1,11 +1,9 @@
 """
-it includes some basic model and function of deepSC
+it's used to model some basic func and rayleigh fading channel
 """
 
-
-import torch.nn
 import torch.nn as nn
-import torch.nn.functional as F
+import torch
 import numpy as np
 
 
@@ -21,12 +19,27 @@ def dense(input_size, output_size):  # dense layer is a full connection layer an
         nn.ReLU()
     )
 
-def AWGN_channel(x, snr):  # used to simulate additive white gaussian noise channel
-    [batch_size, length, len_feature] = x.shape
-    x_power = torch.sum(x ** 2)/ (batch_size * length * len_feature)
-    n_power = x_power / (10 ** (snr / 10.0))
-    noise = torch.rand(batch_size, length, len_feature, device=device) *n_power
-    return x + noise
+def fading_channel(x, h_I, h_Q, snr):
+    [batch_size, length, feature_length] = x.shape
+    x = torch.reshape(x, (batch_size, -1, 2))
+    x_com = torch.complex(x[:, :, 0], x[:, :, 1])
+    x_fft = torch.fft.fft(x_com)
+    h = torch.complex(torch.tensor(h_I), torch.tensor(h_Q))
+    h_fft = torch.fft.fft(h, feature_length * length//2)
+    y_fft = h_fft * x_fft
+    snr = 10 ** (snr / 10.0)
+    xpower = torch.sum(y_fft ** 2) / (length * feature_length * batch_size // 2)
+    npower = xpower / snr
+    n = torch.randn(batch_size, feature_length * length // 2, device=device) * npower
+    y_add = y_fft + n
+    y_add = y_add / h_fft
+    y = torch.fft.ifft(y_add)
+    y_tensor = torch.zeros((y.shape[0], y.shape[1], 2), device=device)
+    y_tensor[:, :, 0] = y.real
+    y_tensor[:, :, 1] = y.imag
+    y_tensor = torch.reshape(y_tensor, (batch_size, length, feature_length))
+
+    return y_tensor
 
 class SemanticCommunicationSystem(nn.Module):  # pure DeepSC
     def __init__(self):
@@ -46,77 +59,18 @@ class SemanticCommunicationSystem(nn.Module):  # pure DeepSC
         self.prediction = nn.Linear(128, 35632)
         self.softmax = nn.Softmax(dim=2)  # dim=2 means that it calculates softmax in the feature dimension
 
-    def forward(self, inputs):
+    def forward(self, inputs, h_I, h_Q):
         embeddingVector = self.embedding(inputs)
         codeSent = self.encoder(embeddingVector)
         codeSent = self.denseEncoder1(codeSent)
         codeSent = self.denseEncoder2(codeSent)
-        codeWithNoise = AWGN_channel(codeSent, 12)  # assuming snr = 12db
+        codeWithNoise = fading_channel(codeSent, h_I, h_Q, 12)  # assuming snr = 12db
         codeReceived = self.denseDecoder1(codeWithNoise)
         codeReceived = self.denseDecoder2(codeReceived)
         codeReceived = self.decoder(codeReceived)
         infoPredicted = self.prediction(codeReceived)
         infoPredicted = self.softmax(infoPredicted)
         return infoPredicted
-
-
-class MutualInfoSystem(nn.Module):  # mutual information used to maximize channel capacity
-    def __init__(self):
-        super(MutualInfoSystem, self).__init__()
-        self.fc1 = nn.Linear(32, 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, 1)
-        # nn.init.normal_(self.fc1.weight, std=0.02)  # init weight with normal distribution and mean is 0, std is 0.02
-        # nn.init.constant_(self.fc1.bias, 0)  # init bias with constant num 0
-        # nn.init.normal_(self.fc2.weight, std=0.02)
-        # nn.init.constant_(self.fc2.bias, 0)
-        # nn.init.normal_(self.fc3.weight, std=0.02)
-        # nn.init.constant_(self.fc3.bias, 0)  # which may not be necessary to initialize weight manually
-
-    def forward(self, inputs):
-        output = F.relu(self.fc1(inputs))
-        output = F.relu(self.fc2(output))
-        output = F.relu(self.fc3(output))
-        return output
-
-def sample_batch(batch_size, sample_mode):  # used to sample data for mutual info system
-    if sample_mode == "joint":  # joint sample
-        index = np.random.choice(range(12799), size=batch_size, replace=False)  # replace = false means it won't select same number
-        num = 0
-        for i in index:
-            x = np.load("mutual data/x1/" + str(i) + ".npy")
-            y = np.load("mutual data/y1/" + str(i) + ".npy")
-            data_x = x.reshape(-1, 16)  # -1 means python will infer the dimension automatically
-            data_y = y.reshape(-1, 16)
-            if num == 0:
-                batch_x = data_x
-                batch_y = data_y
-            else:
-                batch_x = np.concatenate([batch_x, data_x], axis=0)
-                batch_y = np.concatenate([batch_y, data_y], axis=0)
-            num += 1
-    elif sample_mode == 'marginal':  # marginal sample
-        joint_index = np.random.choice(range(12799), size=batch_size, replace=False)
-        marginal_index = np.random.choice(range(12799), size=batch_size, replace=False)
-        num = 0
-        for i in range(batch_size):
-            j_index = joint_index[i]
-            m_index = marginal_index[i]
-            x = np.load("mutual data/x1/" + str(j_index) + ".npy")
-            y = np.load("mutual data/y1/" + str(m_index) + ".npy")
-            data_x = x.reshape(-1, 16)
-            data_y = y.reshape(-1, 16)
-            if num == 0:
-                batch_x = data_x
-                batch_y = data_y
-            else:
-                batch_x = np.concatenate([batch_x, data_x], axis=0)
-                batch_y = np.concatenate([batch_y, data_y], axis=0)
-            num += 1
-    batch = np.concatenate([batch_x, batch_y], axis=1)  # axis = 1 means that data will concat at the dim of row
-    # and if axis = 0, which means that data will concat one by one
-
-    return batch
 
 class LossFn(nn.Module):  # Loss function
     def __init__(self):

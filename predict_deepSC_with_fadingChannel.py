@@ -1,35 +1,61 @@
 """
-it's used to validate model trained from train.py
+it's used to validate model trained from fading channel
 """
+
 import torch
-import model
-from model import calBLEU
+import pickle
+import numpy as np
+import modelModifiedForFadingChannel
+import torch.nn.functional as F
 from nltk.tokenize import word_tokenize
 from transformers import BertTokenizer, BertModel
 from matplotlib import pyplot as plt
-import torch.nn.functional as F
-import numpy as np
-import pickle
+from modelModifiedForFadingChannel import calBLEU
 
+
+batch_size = 128
+num_epoch = 3
+model_path = './trainedModel/deepSC_with_fadingChannel.pth'
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-print("Using " + str(device).upper())
-model_path = './trainedModel/deepSC_without_MI.pth'
+print('Using ' + str(device).upper())
 
+P_hdB = np.array([0, -8, -17, -21, -25])  # Power characteristics of each channels(dB)
+D_h = [0, 3, 5, 6, 8]  # Each channel delay(sampling point)
+P_h = 10 ** (P_hdB / 10)  # Power characteristics of each channels(dB)
+NH = len(P_hdB)  # Number of the multi channels
+LH = D_h[-1] + 1  # Length of the channels(after delaying)
+P_h = np.reshape(P_h, (len(D_h), 1))
 
-net = model.SemanticCommunicationSystem()
-net.load_state_dict(torch.load(model_path, map_location = device))
+def multipath_generator(num_sample):
+    a = np.tile(np.sqrt(P_h / 2), num_sample)
+    A_h_I = np.random.rand(NH, num_sample) * a
+    A_h_Q = np.random.rand(NH, num_sample) * a
+    h_I = np.zeros((num_sample, LH))
+    h_Q = np.zeros((num_sample, LH))
+
+    i = 0
+    for index in D_h:
+        h_I[:, index] = A_h_I[i, :]
+        h_Q[:, index] = A_h_Q[i, :]
+        i += 1
+
+    return h_I, h_Q
+
+net = modelModifiedForFadingChannel.SemanticCommunicationSystem()
+net.load_state_dict(torch.load(model_path, map_location=device))
 net.to(device)
-tokenizer = BertTokenizer.from_pretrained('bertModel')
-bert_model = BertModel.from_pretrained('bertModel')
 
-with open('data/corpus_10w.txt', 'r') as file:
+with open("data/corpus_10w_test.txt", "r") as f:
     start = ""
     end = ""
-    text = [start + line.strip() + end for line in file]
-with open('data/id_dic_10w.pkl', 'rb') as file:
-    id_dic = pickle.load(file)
-with open('data/word_dic_10w.pkl', 'rb') as file:
-    word_dic = pickle.load(file)
+    text = [start + line.strip() + end for line in f]
+with open('data/id_dic_10w.pkl', 'rb') as f:
+    id_dic = pickle.load(f)
+with open('data/word_dic_10w.pkl', 'rb') as f:
+    word_dic = pickle.load(f)
+
+tokenizer = BertTokenizer.from_pretrained('bertmodel')
+bert_model = BertModel.from_pretrained('bertmodel')
 
 snr_BLEU_1_gram = []
 snr_BLEU_2_gram = []
@@ -59,12 +85,13 @@ for snr in range(1, 18, 3):
         inputs[i, :] = inputs_one_sen
         num_list.append(num)  # used to store evert length of sentence
 
+    h_I, h_Q = multipath_generator(128)
     inputs = torch.tensor(inputs).long()
     inputs = inputs.to(device)
-    label = F.one_hot(inputs, num_classes = 35632).float()  # convert to tensor
+    label = F.one_hot(inputs, num_classes=35632).float()  # convert to tensor
     label = label.to(device)
 
-    s_predicted = net(inputs)
+    s_predicted = net(inputs, h_I, h_Q)
     id_output_arr = torch.argmax(s_predicted, dim=2)
 
     for i in range(128):
@@ -125,4 +152,3 @@ plt.legend(loc='best')
 plt.show()
 
 print("All done!")
-

@@ -5,7 +5,7 @@ attention that it won't modify mutual info model, only deepSC's improvement will
 
 import torch
 from torch.utils.data import DataLoader
-import modelModified
+import modelModifiedForMI
 from tqdm import tqdm
 from data_process import CorpusData
 import torch.nn.functional as F
@@ -20,15 +20,15 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print('Using ' + str(device).upper())
 
 dataloader = DataLoader(CorpusData(), batch_size= batch_size, shuffle=True)
-scNet = modelModified.SemanticCommunicationSystem()
+scNet = modelModifiedForMI.SemanticCommunicationSystem()
 scNet.load_state_dict(torch.load(deepSC_path, map_location=device))
 scNet.to(device)
-muInfoNet = modelModified.MutualInfoSystem()
+muInfoNet = modelModifiedForMI.MutualInfoSystem()
 muInfoNet.load_state_dict(torch.load(muInfo_path, map_location=device))
 muInfoNet.to(device)
 
 optim = torch.optim.Adam(scNet.parameters(), lr=0.001)
-lossFn = modelModified.LossFn()
+lossFn = modelModifiedForMI.LossFn()
 
 for epoch in range(num_epoch):
     train_bar = tqdm(dataloader)
@@ -47,8 +47,8 @@ for epoch in range(num_epoch):
         x = torch.reshape(codeSent, (-1, 16))  # get intermediate variables to train mutual info sys
         y = torch.reshape(codeWithNoise, (-1, 16))
 
-        batch_joint = modelModified.sample_batch(5, 'joint', x, y).to(device)
-        batch_marginal = modelModified.sample_batch(5, 'marginal', x, y).to(device)
+        batch_joint = modelModifiedForMI.sample_batch(5, 'joint', x, y).to(device)
+        batch_marginal = modelModifiedForMI.sample_batch(5, 'marginal', x, y).to(device)
 
         t = muInfoNet(batch_joint)
         et = torch.exp(muInfoNet(batch_marginal))
