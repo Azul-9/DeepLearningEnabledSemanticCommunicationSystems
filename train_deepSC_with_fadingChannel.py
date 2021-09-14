@@ -11,8 +11,8 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 
-batch_size = 128
-num_epoch = 3
+batch_size = 256
+num_epoch = 2
 save_path = './trainedModel/deepSC_with_fadingChannel.pth'
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print('Using ' + str(device).upper())

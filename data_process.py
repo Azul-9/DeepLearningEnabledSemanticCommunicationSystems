@@ -1,5 +1,6 @@
 """
 it's used to create a class which is the subclass of Dataset, it serves as the argument of dataloader
+attention that in different system, default encoding of files is different, it's matter to specify encoding
 """
 
 import pickle
@@ -10,7 +11,7 @@ from torch.utils.data import Dataset
 
 class CorpusData(Dataset):
     def __init__(self):
-        with open('data/corpus_10w_train.txt', 'r') as file:  # attention the way of file is opened
+        with open('data/corpus_10w_train.txt', 'r', encoding='utf-8') as file:  # attention the way of file is opened
             start = ""
             end = ""
             self.text = [start + line.strip() + end for line in file]
@@ -24,12 +25,12 @@ class CorpusData(Dataset):
     def __getitem__(self, index):
         sen = self.text[index]  # get sentence at index position
         sen_split = word_tokenize(sen)  # get a list consist of single word in the sentence
-        input = numpy.zeros((1, 30))  # used to pad sentence
+        inputs = numpy.zeros((1, 30))  # used to pad sentence
         num = 0
         for word in sen_split:
-            input[0, num] = self.id_dic[word]
+            inputs[0, num] = self.id_dic[word]
             num += 1
             if(num >= 30):  # at most store 30 words
                 break
 
-        return input, num
+        return inputs, num

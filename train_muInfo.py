@@ -1,5 +1,5 @@
 """
-it's used to train a mutual inforamtion system
+it's used to train a mutual information system
 """
 
 import model
@@ -7,15 +7,15 @@ import torch
 from matplotlib import pyplot as plt
 
 
-num_epoch = 200
+num_epoch = 400
 
 save_path = './trainedModel/MutualInfoSystem.pth'
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 print("Using: " + str(device).upper())
 
 net = model.MutualInfoSystem()
 net.to(device)
-optim = torch.optim.Adam(net.parameters(), lr=0.002)
+optim = torch.optim.Adam(net.parameters(), lr=0.0001)
 
 muInfo = []
 for i in range(num_epoch):

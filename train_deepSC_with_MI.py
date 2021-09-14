@@ -10,13 +10,13 @@ from tqdm import tqdm
 from data_process import CorpusData
 import torch.nn.functional as F
 
-batch_size = 128
-num_epoch = 3
-lamda = 0.1  # it's used to control how much the muInfo will affect deepSC model
+batch_size = 256
+num_epoch = 2
+lamda = 0.05  # it's used to control how much the muInfo will affect deepSC model
 save_path = './trainedModel/deepSC_with_MI.pth'
 deepSC_path = 'trainedModel/deepSC_without_MI.pth'
 muInfo_path = 'trainedModel/MutualInfoSystem.pth'
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 print('Using ' + str(device).upper())
 
 dataloader = DataLoader(CorpusData(), batch_size= batch_size, shuffle=True)
@@ -27,7 +27,7 @@ muInfoNet = modelModifiedForMI.MutualInfoSystem()
 muInfoNet.load_state_dict(torch.load(muInfo_path, map_location=device))
 muInfoNet.to(device)
 
-optim = torch.optim.Adam(scNet.parameters(), lr=0.001)
+optim = torch.optim.Adam(scNet.parameters(), lr=0.0005)
 lossFn = modelModifiedForMI.LossFn()
 
 for epoch in range(num_epoch):
@@ -53,16 +53,16 @@ for epoch in range(num_epoch):
         t = muInfoNet(batch_joint)
         et = torch.exp(muInfoNet(batch_marginal))
         MI_loss = torch.mean(t) - torch.log(torch.mean(et))
-        SC_loss = lossFn(s_predicted, label, length_sen, num_sample)
+        SC_loss = lossFn(s_predicted, label, length_sen, num_sample, batch_size)
 
         loss = SC_loss + torch.exp(-MI_loss) * lamda
         loss.backward()
         optim.step()
         optim.zero_grad()
 
-        print("Total Loss: {}, Mutual Loss: {}, SC Loss: {}".format(loss.cpu().detach.numpy(),
-                                                                    MI_loss.cpu().detach.numpy(),
-                                                                    SC_loss.cpu().detach.numpy()))
+        print("Total Loss: {}, Mutual Loss: {}, SC Loss: {}".format(loss.cpu().detach().numpy(),
+                                                                    -MI_loss.cpu().detach().numpy(),
+                                                                    SC_loss.cpu().detach().numpy()))
 
 torch.save(scNet.state_dict(), save_path)
 print("All done!")

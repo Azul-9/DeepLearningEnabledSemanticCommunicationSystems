@@ -9,7 +9,7 @@ import torch.nn.functional as F
 import numpy as np
 
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 def embedding(input_size, output_size):  # embedding layer, the former is the size of dic and
     # the latter is the dimension of the embedding vector
@@ -23,7 +23,7 @@ def dense(input_size, output_size):  # dense layer is a full connection layer an
 
 def AWGN_channel(x, snr):  # used to simulate additive white gaussian noise channel
     [batch_size, length, len_feature] = x.shape
-    x_power = torch.sum(x ** 2)/ (batch_size * length * len_feature)
+    x_power = torch.sum(torch.abs(x))/ (batch_size * length * len_feature)
     n_power = x_power / (10 ** (snr / 10.0))
     noise = torch.rand(batch_size, length, len_feature, device=device) *n_power
     return x + noise
@@ -40,21 +40,21 @@ class SemanticCommunicationSystem(nn.Module):  # pure DeepSC
 
         self.denseDecoder1 = dense(16, 256)
         self.denseDecoder2 = dense(256, 128)
-        self.frontDecoder = nn.TransformerEncoderLayer(d_model=128, nhead=8)
-        self.decoder = nn.TransformerEncoder(self.frontDecoder, num_layers=3)
+        self.frontDecoder = nn.TransformerDecoderLayer(d_model=128, nhead=8)
+        self.decoder = nn.TransformerDecoder(self.frontDecoder, num_layers=3)
 
         self.prediction = nn.Linear(128, 35632)
         self.softmax = nn.Softmax(dim=2)  # dim=2 means that it calculates softmax in the feature dimension
 
     def forward(self, inputs):
         embeddingVector = self.embedding(inputs)
-        codeSent = self.encoder(embeddingVector)
-        codeSent = self.denseEncoder1(codeSent)
+        code = self.encoder(embeddingVector)
+        codeSent = self.denseEncoder1(code)
         codeSent = self.denseEncoder2(codeSent)
         codeWithNoise = AWGN_channel(codeSent, 12)  # assuming snr = 12db
         codeReceived = self.denseDecoder1(codeWithNoise)
         codeReceived = self.denseDecoder2(codeReceived)
-        codeReceived = self.decoder(codeReceived)
+        codeReceived = self.decoder(codeReceived, code)
         infoPredicted = self.prediction(codeReceived)
         infoPredicted = self.softmax(infoPredicted)
         return infoPredicted, codeSent, codeWithNoise
